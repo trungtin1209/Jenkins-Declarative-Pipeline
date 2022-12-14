@@ -1,0 +1,588 @@
+//This pipeline cannot run normally as the others because we are using local gitlab, and it cannot be reached from outside
+//So please paste this content into pipeline instead of checking it out
+
+def APP_TO_DEPLOY = []
+def HOME_REF_CONS_PATH = ''
+def NODE = "hfmt_deployer"
+def KEYVAUTL_SECRETS = ["cassandra-user", "cassandra-password", "spark-ssh-user"]
+def SPARK_TYPE = '' // VM or HDI
+def forceStop = true
+
+pipeline { 
+    
+    parameters {
+        // string(name: 'BUILD_NUMBER', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" > Input here the build number of assembler project which want to copy and deploy. <br> Blank = Copy from latest build</p>')
+        separator(sectionHeader: 'FLEET')
+        booleanParam(name: 'AEMR', defaultValue: false, description: '')
+        booleanParam(name: 'WCP', defaultValue: false, description: '')
+        separator(sectionHeader: 'STREAMING_TYPE')
+        booleanParam(name: 'EVENT', defaultValue: false, description: '')
+        booleanParam(name: 'SIGNAL', defaultValue: false, description: '')
+        booleanParam(name: 'LOGCLASS', defaultValue: false, description: '')
+        booleanParam(name: 'EVENT_BI', defaultValue: false, description: '')
+        booleanParam(name: 'SIGNAL_BI', defaultValue: false, description: '')
+        booleanParam(name: 'LOGCLASS_BI', defaultValue: false, description: '')
+        separator(sectionHeader: 'ENVIRONMENT')
+        choice(choices: ['', 'DEV', 'QC', 'UAT'], name: 'ENV',description: '<p style="font-family:Calibri (Body);color:Tomato;" >Select here the environment to deploy.</p>')
+    }
+
+    environment { 
+        // Jenkins ID
+        GITLAB_CREDENTIAL_ID             =   "046283f7-9d1a-499e-b436-604173ef2c84"
+        DEV_ACR_CREDENTIAL_ID            =   "hfmt_acr_hfmtdev"
+        HARBOR_CREDENTIAL_ID             =   "hfmt_habor"
+        
+        // Pipeline variable
+        DEV                              =   "DEV"
+        QC                               =   "QC"
+        UAT                              =   "UAT"
+        LOCAL_UAT                        =   "local_UAT"
+
+        DEV_RG_NAME                      =   "dev-rg-hfmt"
+        QC_RG_NAME                       =   "qc-rg-hfmt"
+        UAT_RG_NAME                      =   "HRL-UKS-HFMT-INT-RG01"
+        LOCAL_UAT_RG_NAME                =   "qc-rg-hfmt"
+
+        DEV_AZ_SP_ACCOUNT                =   "hfmt_azure_sp_account"
+        QC_AZ_SP_ACCOUNT                 =   "hfmt_azure_sp_account"
+        LOCAL_UAT_AZ_SP_ACCOUNT          =   "hfmt_azure_sp_account"
+        UAT_AZ_SP_ACCOUNT                =   "hfmt_uat_azure_sp_account"
+
+        DEV_AKS_NAME                     =   "dev-coreapp-aks"
+        QC_AKS_NAME                      =   "qc-coreapp-aks"
+        LOCAL_UAT_AKS_NAME               =   "uat-coreapp-aks"
+        UAT_WEBAPP_AKS_NAME              =   "HRL-UKS-HFMT-INT-AKS-webapp"
+        UAT_BE_AKS_NAME                  =   "HRL-UKS-HFMT-INT-AKS-backend"
+        UAT_OBSIF_AKS_NAME               =   "HRL-UKS-HFMT-INT-AKS-obs-if"
+
+        DEV_ACR_REGISTRY                 =   "hfmtdev"
+        UAT_ACR_REGISTRY                 =   "hfmtuat"
+
+        DEV_KEYVAULT                    =   "https://hfmt-dev-kv.vault.azure.net/"
+        QC_KEYVAULT                     =   "https://hfmt-qc-kv.vault.azure.net/"
+        UAT_KEYVAULT                    =   "https://hrl-uks-hfmt-int-kv-uat.vault.azure.net/"
+        LOCAL_UAT_KEYVAULT              =   "NOT DEPLOYED YET"
+
+        NAMESPACE_BACKEND                =   "backend-application"
+        NAMESPACE_WEBAPP                 =   "web-application"
+        NAMESPACE_OBSIF                  =   "wayside-application"
+        
+        DEV_BRANCH                       =   "*/develop"
+        QC_BRANCH                        =   "*/develop"
+        UAT_BRANCH                       =   "refs/tags/R3.0.0"
+        LOCAL_UAT_BRANCH                 =   "refs/tags/R3.0.0"
+
+        WEBAPP_IMAGE_NAME                =   "hfmt/web-app"
+        OBS_IF_IMAGE_NAME                =   "hfmt/hfmt-obs-if-services"
+        EXPORT_IMAGE_NAME                =   "hfmt/backend/export-service"
+        NOTIFICATION_IMAGE_NAME          =   "hfmt/backend/notification-service"
+        DAS_IMAGE_NAME                   =   "hfmt/backend/das-service"
+        WARMUP_IMAGE_NAME                =   "hfmt/backend/warmup-service"
+        STABLING_IMAGE_NAME              =   "hfmt/backend/stabling-service"
+        ENERGY_IMAGE_NAME                =   "hfmt/backend/ec-service"
+        RULE_IMAGE_NAME                  =   "hfmt/backend/rule-service"
+        ALERTING_IMAGE_NAME              =   "hfmt/backend/alerting-service"
+        TM_UPLOAD_IMAGE_NAME             =   "hfmt/backend/tm-upload-service"
+
+        HARBOR_URL                       =   "fatadev.cybersoft.vn:8433"
+
+        GITLAB_HFMT_DEVOPS               =   'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-devops.git'
+        GITLAB_HFMT_DEVOPS_INFRA         =   'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-devops-infra.git'
+        GITLAB_HFMT_OBS_IF               =   'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-obs-if-services.git'
+        GITLAB_HFMT_BACKEND              =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-backend.git"  
+        GITLAB_HFMT_WEB_SERVER           =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-web-server.git"  
+        GITLAB_HFMT_WEB_UI               =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-web-ui.git"  
+        GITLAB_HFMT_POM_PARENT           =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-pom-parent.git"  
+        GITLAB_HFMT_DATA_SERVICE         =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-data-service.git"  
+        GITLAB_HFMT_DATA_PROCESSING      =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-data-processing.git"  
+        HVN_AZURE_DEVOPS                 =   "git@ssh.dev.azure.com:v3/HFMT/Phoenix/hfmt-devops"
+        HRL_AZURE_DEVOPS                 =   'https://HRL-HFMT-Devops@dev.azure.com/HRL-HFMT-Devops/HFMT-TestingWP1/_git/HFMT-wp1'
+
+        DEVOPS_DIR                       =   "hfmt-devops"
+        DEVOPS_INFRA_DIR                 =   "hfmt-devops-infra"
+        OBS_IF_DIR                       =   "hfmt-obs-if-services"
+        BACKEND_DIR                      =   "hfmt-backend"
+        WEB_SERVER_DIR                   =   "hfmt-web-server"
+        WEB_UI_DIR                       =   "hfmt-web-ui"
+        POM_PARENT_DIR                   =   "hfmt-pom-parent"
+        DATA_SERVICE_DIR                 =   "hfmt-data-service"
+        DATA_PROCESSING_DIR              =   "hfmt-data-processing"
+        STREAMING_PROCESSING_DIR         =   "streaming-processing"
+
+        OBS_IF_ASSEMBLER_JOB             =   "hfmt_obs_if_assembler"
+        OBS_IF_DEPLOYER_JOB              =   "hfmt_obs_if_deployer"
+        BACKEND_ASSEMBLER_JOB            =   "hfmt_backend_assembler"
+        BACKEND_DEPLOYER_JOB             =   "hfmt_backend_deployer"
+        WEB_ASSEMBLER_JOB                =   "hfmt_web_assembler"
+        WEB_DEPLOYER_JOB                 =   "hfmt_web_deployer"
+        DATA_PROCESSING_ASSEMBLER_JOB    =   "hfmt_data_processing_assembler"
+        DATA_PROCESSING_DEPLOYER_JOB     =   "hfmt_data_processing_deployer"
+
+        DEV_DATA_PROCESSING_NODE         =   "hfmt_datapro_dev_cloud"    
+        QC_DATA_PROCESSING_NODE          =   "hfmt_datapro_qc_cloud"    
+        UAT_DATA_PROCESSING_NODE         =   "hfmt_datapro_uat_cloud"    
+        LOCAL_UAT_DATA_PROCESSING_NODE   =   "NOT DEPLOY YET"    
+
+        DEV_SPARK_MASTER                 =   "spark://spark.uksouth.cloudapp.azure.com:7077"
+        QC_SPARK_MASTER                  =   "https://qc-spark-hd.azurehdinsight.net"
+        QC_SPARK_MASTER_SSH              =   "qc-spark-hd-ssh.azurehdinsight.net"
+        UAT_SPARK_MASTER                 =   "https://hspark-hrl-uks-hfmt-int-hdin-spark.azurehdinsight.net/"
+        UAT_SPARK_MASTER_SSH             =   "hspark-hrl-uks-hfmt-int-hdin-spark-ssh.azurehdinsight.net"
+        LOCAL_UAT_SPARK_MASTER           =   "NOT DEPLOY YET"
+
+        HELM_UPGRADE_CMD                =       "helm upgrade --install --force"
+        HELM_INSTALL_CMD                =       "helm install"
+
+
+        SPARK_CMD                        =   "/opt/spark-3.1.2-bin-hadoop3.2"
+    } 
+
+    agent {
+        label {
+            label "hfmt_deployer"
+        }
+    }
+
+    stages { 
+
+        stage('Prepare workspace') { 
+            steps{
+
+                script {
+
+                    echo "########## [INFO] Check environment and clean work space"
+
+                    sh "rm -rf *"
+
+                    if( "${EVENT}_${SIGNAL}_${EVENT_BI}_${SIGNAL_BI}" == 'false_false_false_false')
+                        echo "########## [WARNING] None of STREAMING_TYPE is selected. Nothing to do!"
+                    else if( "${AEMR}_${WCP}" == 'false_false')
+                        echo "########## [WARNING]  None of FLEET is selected. Nothing to do!"
+                    else 
+                    {
+                        forceStop = false
+
+                        if(ENV == DEV) {
+
+                            NODE = DEV_DATA_PROCESSING_NODE
+                            SPARK_TYPE = "VM"
+                        }
+                        else if(ENV == QC) {
+                            NODE = QC_DATA_PROCESSING_NODE
+                            SPARK_TYPE = "HDI"
+                        }
+                        else if(ENV == UAT) {
+                            NODE = UAT_DATA_PROCESSING_NODE
+                            SPARK_TYPE = "HDI"
+                        }
+                        else if(ENV == LOCAL_UAT) {
+                            NODE = LOCAL_UAT_DATA_PROCESSING_NODE
+                            SPARK_TYPE = "HDI"
+                        }
+                    }
+                }
+            }
+        } 
+
+        stage('Copy target artifact') { 
+            when {
+                expression { forceStop == false }
+            }
+            agent {
+                label {
+                    label NODE
+                }
+            }
+            steps { 
+                script {
+                    echo "########## [INFO] Copy artifact from assembler project"
+                    
+                    copyArtifacts fingerprintArtifacts: true, projectName: DATA_PROCESSING_ASSEMBLER_JOB, selector: workspace(), target: "$HOME"
+                }
+            } 
+        } 
+
+        stage('Get secrets from Azure keyvault') { 
+            when {
+                expression { forceStop == false }
+            }
+            agent {
+                label {
+                    label NODE
+                }
+            }
+            steps { 
+                script {
+                    echo "########## [INFO] Get secrets from Azure KeyVault"
+
+                    String secretContent = ""
+
+                    for(String secretName in KEYVAUTL_SECRETS) { 
+                        withAzureKeyvault(azureKeyVaultSecrets: [[envVariable: "value", name: secretName, secretType: 'Secret']], credentialIDOverride: getAzureSP(ENV), keyVaultURLOverride: getKeyVault(ENV)) {
+                            
+                            secretContent = secretContent + 'reference_devops.conf#' + secretName.replaceAll("-","_") + '=' + value + "\n"
+                        }
+                    } 
+
+                    writeFile file: "$HOME/$STREAMING_PROCESSING_DIR/resources/secret.properties", text: secretContent
+                }
+            } 
+        } 
+
+        stage('Substitude the token value') { 
+            when {
+                expression { forceStop == false }
+            }
+            agent {
+                label {
+                    label NODE
+                }
+            }
+            steps { 
+                script {
+                    HOME_REF_CONS_PATH = "$HOME/$STREAMING_PROCESSING_DIR"
+                    def CONS_FILE = "reference_devops.conf"
+
+                    def fleets = []
+                    def types = []
+                    def submits = []
+
+                    if(AEMR == 'true')
+                        fleets.add("aemr")
+                    if(WCP == 'true')
+                        fleets.add("wcp")
+
+                    if(EVENT == 'true')
+                        types.add("event")
+                    if(SIGNAL == 'true')
+                        types.add("signal")
+                    if(LOGCLASS == 'true')
+                        types.add("logclass")
+                    if(EVENT_BI == 'true')
+                        types.add("event_bi")
+                    if(SIGNAL_BI == 'true')
+                        types.add("signal_bi")
+                    if(LOGCLASS_BI == 'true')
+                        types.add("logclass_bi")
+
+                    dir(HOME_REF_CONS_PATH) {
+                        sh "rm -rf ./output | true"
+                        sh "mkdir output"
+                        sh "chmod +x ./detokenizer.sh"
+
+                        for(String fleet in fleets) { 
+                            for(String type in types) {
+
+                                if(SPARK_TYPE == "VM") {
+                                    
+                                    String filename = "reference_"+ fleet + "_" + type + ".conf"
+
+                                    echo "########## [INFO] Starting to substitude the token value into the " + filename + " file..."
+                                
+                                    sh(
+                                    '''
+                                        cp -f reference_devops_$ENV.conf ./output/''' + CONS_FILE + '''
+
+                                        ./detokenizer.sh ./resources/type_values_''' + type + '''.properties ./output
+                                        ./detokenizer.sh ./resources/fleet_values_''' + fleet + '''.properties ./output
+                                        ./detokenizer.sh ./resources/secret.properties ./output >> /dev/null
+
+                                        mv ./output/''' + CONS_FILE + ''' ./output/''' + filename + '''
+                                    '''
+                                    )
+
+                                    APP_TO_DEPLOY.add(filename)
+                                }
+                                else {
+
+                                    String filename = "reference_"+ fleet + "_" + type + ".conf"
+
+                                    echo "########## [INFO] Starting to substitude the token value into the " + filename + " file..."
+                                
+                                    sh(
+                                    '''
+                                        cp -f reference_devops_$ENV.conf ./output/''' + CONS_FILE + '''
+
+                                        ./detokenizer.sh ./resources/type_values_''' + type + '''.properties ./output
+                                        ./detokenizer.sh ./resources/fleet_values_''' + fleet + '''.properties ./output
+                                        ./detokenizer.sh ./resources/secret.properties ./output >> /dev/null
+
+                                        mv ./output/''' + CONS_FILE + ''' ./output/''' + filename + '''
+                                    '''
+                                    )
+
+                                    //================================================
+
+                                    String filenameInput = "input_"+ fleet + "_" + type + ".txt"
+                                    
+                                    echo "########## [INFO] Starting to substitude the token value into the " + filenameInput + " file..."
+
+                                    sh(
+                                    '''
+                                        cp -f reference_input.conf ./output/''' + CONS_FILE + '''
+
+                                        ./detokenizer.sh ./resources/type_values_''' + type + '''.properties ./output
+                                        ./detokenizer.sh ./resources/fleet_values_''' + fleet + '''.properties ./output
+                                        ./detokenizer.sh ./resources/secret.properties ./output >> /dev/null
+
+                                        mv ./output/''' + CONS_FILE + ''' ./output/''' + filenameInput + '''
+                                    '''
+                                    )
+
+                                    APP_TO_DEPLOY.add(filenameInput)
+
+                                }
+                            }
+                        }
+                    }
+                }
+            } 
+        } 
+
+        stage('Submit on VM Spark') { 
+            when { 
+                expression { forceStop == false && SPARK_TYPE == "VM" }
+            }  
+            agent {
+                label {
+                    label NODE
+                }
+            }
+            steps { 
+                script {
+                    dir(HOME_REF_CONS_PATH) {
+
+                        for(String filename in APP_TO_DEPLOY) { 
+                            
+                            echo "########## [INFO] Starting to submit with the " + filename + " reference file on $ENV"
+
+                            submit(
+                                getSparkMaster(ENV),
+                                "$HOME_REF_CONS_PATH/hfmt-streaming-processing-jar-with-dependencies.jar",
+                                "$HOME_REF_CONS_PATH/output/" + filename
+                            )
+                        }
+                    }
+                }
+            } 
+        } 
+
+        stage('Deploy on HDInsight Spark') { 
+            when { 
+                expression { forceStop == false && SPARK_TYPE == "HDI" }
+            }  
+            agent {
+                label {
+                    label NODE
+                }
+            }
+            steps { 
+                script {
+                    dir(HOME_REF_CONS_PATH) {
+
+                        withAzureKeyvault(azureKeyVaultSecrets: [
+                        [envVariable: "spark_ssh_user", name: "spark-ssh-user", secretType: 'Secret'],
+                        [envVariable: "spark_ssh_pass", name: "spark-ssh-pass", secretType: 'Secret'],
+                        [envVariable: "spark_ui_user", name: "spark-ui-user", secretType: 'Secret'],
+                        [envVariable: "spark_ui_pass", name: "spark-ui-pass", secretType: 'Secret']
+                        ], credentialIDOverride: getAzureSP(ENV), keyVaultURLOverride: getKeyVault(ENV)) {
+                            def remote = [:]
+                            remote.name = 'HDInsight Spark'
+                            remote.host = getSparkSSH(ENV)
+                            remote.user = spark_ssh_user
+                            remote.password = spark_ssh_pass
+                            remote.allowAnyHosts = true
+
+                            echo "########## [INFO] Starting to copy resources to Spark HDI on $ENV"
+                            sshCommand remote: remote, command: "rm hfmt-streaming-processing-jar-with-dependencies.jar"
+                            sshCommand remote: remote, command: "rm -rf output"
+                            sshPut remote: remote, from: 'hfmt-streaming-processing-jar-with-dependencies.jar', into: '.'
+                            sshPut remote: remote, from: 'output', into: '.'
+
+                            echo "########## [INFO] Starting to copy resources from Spark HDI to nodes on $ENV"
+                            sshCommand remote: remote, command: "hadoop fs -rm -r -f upload-resources"
+                            sshCommand remote: remote, command: "hadoop fs -mkdir -p upload-resources"
+                            sshCommand remote: remote, command: "hadoop fs -copyFromLocal hfmt-streaming-processing-jar-with-dependencies.jar upload-resources/"
+                            sshCommand remote: remote, command: "hadoop fs -copyFromLocal ./output/* upload-resources/"
+                            sshCommand remote: remote, command: "hadoop fs -ls upload-resources"
+                            
+
+                            for(String filename in APP_TO_DEPLOY) { 
+                            
+                                echo "########## [INFO] Starting to deploy with the " + filename + " reference file on $ENV"
+
+                                String hdiUrl = getSparkMaster(ENV)
+                                String referenceFile = "$HOME_REF_CONS_PATH/output/" + filename
+                                
+                                sh '''
+                                    curl -k --user "${spark_ui_user}:${spark_ui_pass}" -v -H "Content-Type: application/json" -X POST --data @''' + referenceFile + ''' "''' + hdiUrl + '''/livy/batches" -H "X-Requested-By: ${spark_ssh_user}"
+                                '''
+                            }
+                        }
+                    }
+                }
+            } 
+        } 
+
+        stage('Clean up') { 
+            when {
+                expression { forceStop == false }
+            }
+            agent {
+                label {
+                    label NODE
+                }
+            }
+            steps { 
+                script {
+                    dir(HOME_REF_CONS_PATH) {
+
+                        sh("rm -rf $HOME_REF_CONS_PATH/output")
+                        sh("rm -rf $HOME_REF_CONS_PATH/resources")
+                        sh("rm $HOME_REF_CONS_PATH/reference_devops*")
+                        sh("rm $HOME_REF_CONS_PATH/detokenizer.sh")
+                    }
+                }
+            } 
+        } 
+    }
+
+    post {
+        always {
+            script {
+
+                if(forceStop)
+                    currentBuild.result = 'SUCCESS'
+                else {
+                    String description = ''
+
+                    if(AEMR == 'true')
+                    {
+                        String fleet = 'AEMR:'
+
+                        if(EVENT == 'true')
+                            fleet = fleet + " " + "event"
+                        if(SIGNAL == 'true')
+                            fleet = fleet + " " + "signal"
+                        if(EVENT_BI == 'true')
+                            fleet = fleet + " " + "event_bi"
+                        if(SIGNAL_BI == 'true')
+                            fleet = fleet + " " + "signal_bi"
+
+                        description = description + fleet + " - " 
+                    }
+
+                    if(WCP == 'true')
+                    {
+                        String fleet = 'WCP:'
+
+                        if(EVENT == 'true')
+                            fleet = fleet + " " + "event"
+                        if(SIGNAL == 'true')
+                            fleet = fleet + " " + "signal"
+                        if(EVENT_BI == 'true')
+                            fleet = fleet + " " + "event_bi"
+                        if(SIGNAL_BI == 'true')
+                            fleet = fleet + " " + "signal_bi"
+
+                        description = description + fleet + " - " 
+                    }
+                        
+                    description = description + "On: " + ENV
+
+                    currentBuild.description = description
+                }
+            }
+        }
+    }
+} 
+
+def getAzureSP(String env)
+{
+    String az_sp = ''
+
+    if(env == DEV){
+        az_sp = DEV_AZ_SP_ACCOUNT
+    }
+    else if(env == QC){
+        az_sp = QC_AZ_SP_ACCOUNT
+    }
+    else if(env == UAT){
+        az_sp = UAT_AZ_SP_ACCOUNT
+    }
+    else if(env == LOCAL_UAT){
+        az_sp = LOCAL_UAT_AZ_SP_ACCOUNT
+    }
+
+    return az_sp
+}
+
+def getKeyVault(String env)
+{
+    String kv = ''
+
+    if(env == DEV){
+        kv = DEV_KEYVAULT
+    }
+    else if(env == QC){
+        kv = QC_KEYVAULT
+    }
+    else if(env == UAT){
+        kv = UAT_KEYVAULT
+    }
+    else if(env == LOCAL_UAT){
+        kv = LOCAL_UAT_KEYVAULT
+    }
+
+    return kv
+}
+
+def getSparkMaster(String env)
+{
+    String spark = ''
+
+    if(env == DEV){
+        spark = DEV_SPARK_MASTER
+    }
+    else if(env == QC){
+        spark = QC_SPARK_MASTER
+    }
+    else if(env == UAT){
+        spark = UAT_SPARK_MASTER
+    }
+    else if(env == LOCAL_UAT){
+        spark = LOCAL_UAT_SPARK_MASTER
+    }
+
+    return spark
+}
+
+def getSparkSSH(String env)
+{
+    String spark = ''
+
+    if(env == DEV){
+        spark = ''
+    }
+    else if(env == QC){
+        spark = QC_SPARK_MASTER_SSH
+    }
+    else if(env == UAT){
+        spark = UAT_SPARK_MASTER_SSH
+    }
+    else if(env == LOCAL_UAT){
+        spark = ''
+    }
+
+    return spark
+}
+
+def submit(String sparkMaster, String jarFile, String referenceFile) {
+    sh '''
+        $SPARK_CMD/bin/spark-submit \
+        --class com.hvn.hfmt.processing.HFMTDataStreaming \
+        --master ''' + sparkMaster + ''' \
+        --deploy-mode cluster --supervise --executor-memory 1G \
+        --total-executor-cores 1 ''' + jarFile + ''' ''' + referenceFile + '''
+    '''
+}

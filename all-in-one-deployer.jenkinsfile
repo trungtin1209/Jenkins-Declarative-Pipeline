@@ -1,0 +1,335 @@
+library identifier: 'hfmt-shared-library@jenkins-pipelines',
+    retriever: modernSCM([
+      $class: 'GitSCMSource',
+      credentialsId: '046283f7-9d1a-499e-b436-604173ef2c84', 
+      remote: 'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-devops.git'
+])
+
+def forceStop = true
+
+pipeline { 
+    
+    parameters {
+        separator(sectionHeader: 'DEPLOY BACK-END SERVICE')
+        string(name: 'EXPORT_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        string(name: 'NOTIFICATION_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        string(name: 'DAS_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        string(name: 'WARMUP_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        string(name: 'STABLING_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        string(name: 'ENERGY_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        string(name: 'RULE_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        string(name: 'ALERTING_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        string(name: 'TM_UPLOAD_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        string(name: 'TM_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag of export service which you want to release to customer.<br>Blank = IGNORE.</p>')
+        separator(sectionHeader: 'DEPLOY OBS-IF SERVICE')
+        string(name: 'OBS_IF_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag version of your naming convention.</p>')
+        booleanParam(name: 'AEMR_810001', defaultValue: false, description: '')
+        booleanParam(name: 'AEMR_810002', defaultValue: false, description: '')
+        booleanParam(name: 'AEMR_810003', defaultValue: false, description: '')
+        booleanParam(name: 'AEMR_810004', defaultValue: false, description: '')
+        booleanParam(name: 'AEMR_810005', defaultValue: false, description: '')
+        booleanParam(name: 'AEMR_810006', defaultValue: false, description: '')
+        booleanParam(name: 'AEMR_810007', defaultValue: false, description: '')
+        booleanParam(name: 'AEMR_810008', defaultValue: false, description: '')
+        booleanParam(name: 'AEMR_810009', defaultValue: false, description: '')
+        booleanParam(name: 'AEMR_810010', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805001', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805002', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805003', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805004', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805005', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805006', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805007', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805008', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805009', defaultValue: false, description: '')
+        booleanParam(name: 'WCP_805010', defaultValue: false, description: '')
+        separator(sectionHeader: 'DEPLOY WEB-APP SERVICE')
+        string(name: 'WEBAPP_IMAGE_TAG', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" >Input here the image tag version of your naming convention.</p>')
+        separator(sectionHeader: 'SERVICE BASE ON FLEET')
+        booleanParam(name: 'ALL_TRAIN', defaultValue: false, description: '<p style="font-family:Calibri (Body);color:Tomato;" >Check here + Check AEMR/WCP --> install multiple obs-if service</p>')
+        booleanParam(name: 'AEMR', defaultValue: true, description: '<p style="font-family:Calibri (Body);color:Tomato;" >Check here + Check ALL_TRAIN --> Install multiple obs-if service<br> Check here --> Install all aemr backend service</p>')
+        booleanParam(name: 'WCP', defaultValue: true, description: '<p style="font-family:Calibri (Body);color:Tomato;" >Check here + Check ALL_TRAIN --> Install multiple obs-if service<br> Check here --> Install all wcp backend service</p>')
+        separator(sectionHeader: 'ENVIRONMENT')
+        choice(choices: ['', 'DEV', 'QC', 'UAT', 'local_UAT'], name: 'ENV',description: '<p style="font-family:Calibri (Body);color:Tomato;" >Select here the environment to deploy.</p>')
+        separator(sectionHeader: 'OPTIONAL')
+        choice(choices: ['Debug then install', 'Install without debug', 'Force uninstall first','Debug only not install'], name: 'DEBUG_MODE',description: '')
+        booleanParam(name: 'VALIDATE_IMAGE', defaultValue: true, description: '')
+    }
+
+    environment { 
+        // Jenkins ID
+        GITLAB_CREDENTIAL_ID             =   "046283f7-9d1a-499e-b436-604173ef2c84"
+        DEV_ACR_CREDENTIAL_ID            =   "hfmt_acr_hfmtdev"
+        HARBOR_CREDENTIAL_ID             =   "hfmt_habor"
+        
+        // Pipeline variable
+        DEV                              =   "DEV"
+        QC                               =   "QC"
+        UAT                              =   "UAT"
+        LOCAL_UAT                        =   "local_UAT"
+
+        DEV_RG_NAME                      =   "dev-rg-hfmt"
+        QC_RG_NAME                       =   "qc-rg-hfmt"
+        UAT_RG_NAME                      =   "HRL-UKS-HFMT-INT-RG01"
+        LOCAL_UAT_RG_NAME                =   "qc-rg-hfmt"
+
+        DEV_AZ_SP_ACCOUNT                =   "hfmt_azure_sp_account"
+        QC_AZ_SP_ACCOUNT                 =   "hfmt_azure_sp_account"
+        LOCAL_UAT_AZ_SP_ACCOUNT          =   "hfmt_azure_sp_account"
+        UAT_AZ_SP_ACCOUNT                =   "hfmt_uat_azure_sp_account"
+
+        DEV_AKS_NAME                     =   "dev-coreapp-aks"
+        QC_AKS_NAME                      =   "qc-coreapp-aks"
+        LOCAL_UAT_AKS_NAME               =   "uat-coreapp-aks"
+        UAT_WEBAPP_AKS_NAME              =   "HRL-UKS-HFMT-INT-AKS-webapp"
+        UAT_BE_AKS_NAME                  =   "HRL-UKS-HFMT-INT-AKS-backend"
+        UAT_OBSIF_AKS_NAME               =   "HRL-UKS-HFMT-INT-AKS-obs-if"
+
+        DEV_ACR_REGISTRY                 =   "hfmtdev"
+        UAT_ACR_REGISTRY                 =   "hfmtuat"
+
+        DEV_KEYVAULT                    =   "https://hfmt-dev-kv.vault.azure.net/"
+        QC_KEYVAULT                     =   "https://hfmt-qc-kv.vault.azure.net/"
+        UAT_KEYVAULT                    =   "https://hrl-uks-hfmt-int-kv-uat.vault.azure.net/"
+        LOCAL_UAT_KEYVAULT              =   "NOT DEPLOYED YET"
+
+        NAMESPACE_BACKEND                =   "backend-application"
+        NAMESPACE_WEBAPP                 =   "web-application"
+        NAMESPACE_OBSIF                  =   "wayside-application"
+        
+        DEV_BRANCH                       =   "*/develop"
+        QC_BRANCH                        =   "*/develop"
+        UAT_BRANCH                       =   "refs/tags/R3.0.0"
+        LOCAL_UAT_BRANCH                 =   "refs/tags/R3.0.0"
+
+        WEBAPP_IMAGE_NAME                =   "hfmt/web-app"
+        OBS_IF_IMAGE_NAME                =   "hfmt/hfmt-obs-if-services"
+        EXPORT_IMAGE_NAME                =   "hfmt/backend/export-service"
+        NOTIFICATION_IMAGE_NAME          =   "hfmt/backend/notification-service"
+        DAS_IMAGE_NAME                   =   "hfmt/backend/das-service"
+        WARMUP_IMAGE_NAME                =   "hfmt/backend/warmup-service"
+        STABLING_IMAGE_NAME              =   "hfmt/backend/stabling-service"
+        ENERGY_IMAGE_NAME                =   "hfmt/backend/ec-service"
+        RULE_IMAGE_NAME                  =   "hfmt/backend/rule-service"
+        ALERTING_IMAGE_NAME              =   "hfmt/backend/alerting-service"
+        TM_UPLOAD_IMAGE_NAME             =   "hfmt/backend/tm-upload-service"
+        TM_IMAGE_NAME                    =   "hfmt/backend/tm-service"
+
+        HARBOR_URL                       =   "fatadev.cybersoft.vn:8433"
+
+        GITLAB_HFMT_DEVOPS               =   'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-devops.git'
+        GITLAB_HFMT_DEVOPS_INFRA         =   'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-devops-infra.git'
+        GITLAB_HFMT_OBS_IF               =   'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-obs-if-services.git'
+        GITLAB_HFMT_BACKEND              =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-backend.git"  
+        GITLAB_HFMT_WEB_SERVER           =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-web-server.git"  
+        GITLAB_HFMT_WEB_UI               =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-web-ui.git"  
+        GITLAB_HFMT_POM_PARENT           =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-pom-parent.git"  
+        GITLAB_HFMT_DATA_SERVICE         =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-data-service.git"  
+        GITLAB_HFMT_DATA_PROCESSING      =   "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-data-processing.git"  
+        HVN_AZURE_DEVOPS                 =   "git@ssh.dev.azure.com:v3/HFMT/Phoenix/hfmt-devops"
+        HRL_AZURE_DEVOPS                 =   'https://HRL-HFMT-Devops@dev.azure.com/HRL-HFMT-Devops/HFMT-TestingWP1/_git/HFMT-wp1'
+
+        DEVOPS_DIR                       =   "hfmt-devops"
+        DEVOPS_INFRA_DIR                 =   "hfmt-devops-infra"
+        OBS_IF_DIR                       =   "hfmt-obs-if-services"
+        BACKEND_DIR                      =   "hfmt-backend"
+        WEB_SERVER_DIR                   =   "hfmt-web-server"
+        WEB_UI_DIR                       =   "hfmt-web-ui"
+        POM_PARENT_DIR                   =   "hfmt-pom-parent"
+        DATA_SERVICE_DIR                 =   "hfmt-data-service"
+        DATA_PROCESSING_DIR              =   "hfmt-data-processing"
+        STREAMING_PROCESSING_DIR         =   "streaming-processing"
+
+        OBS_IF_ASSEMBLER_JOB             =   "hfmt_obs_if_assembler"
+        OBS_IF_DEPLOYER_JOB              =   "hfmt_obs_if_deployer"
+        BACKEND_ASSEMBLER_JOB            =   "hfmt_backend_assembler"
+        BACKEND_DEPLOYER_JOB             =   "hfmt_backend_deployer"
+        WEB_ASSEMBLER_JOB                =   "hfmt_web_assembler"
+        WEB_DEPLOYER_JOB                 =   "hfmt_web_deployer"
+        DATA_PROCESSING_ASSEMBLER_JOB    =   "hfmt_data_processing_assembler"
+        DATA_PROCESSING_DEPLOYER_JOB     =   "hfmt_data_processing_deployer"
+
+        DEV_DATA_PROCESSING_NODE         =   "hfmt_datapro_dev_cloud"    
+        QC_DATA_PROCESSING_NODE          =   "hfmt_datapro_qc_cloud"    
+        UAT_DATA_PROCESSING_NODE         =   "hfmt_datapro_uat_cloud"    
+        LOCAL_UAT_DATA_PROCESSING_NODE   =   "NOT DEPLOY YET"    
+
+        DEV_SPARK_MASTER                 =   "spark://spark.uksouth.cloudapp.azure.com:7077"
+        QC_SPARK_MASTER                  =   "spark://qc-spark-hd.azurehdinsight.net:7077"
+        UAT_SPARK_MASTER                 =   "spark://plafcb-hrl-uks-hfmt-int-hdin-spark.azurehdinsight.net:7077"
+        LOCAL_UAT_SPARK_MASTER           =   "NOT DEPLOY YET"
+
+        HELM_UPGRADE_CMD                =       "helm upgrade --install --force"
+        HELM_INSTALL_CMD                =       "helm install"
+    } 
+
+    agent {
+        label {
+            label "hfmt_deployer"
+        }
+    }
+
+    stages { 
+
+        stage('Prepare workspace') { 
+            steps{
+                script {
+
+                    echo "########## [INFO] Check environment and clean work space"
+
+                    sh "rm -rf *"
+
+                    if( "${ENV}" == '')
+                        echo "########## [WARNING] Empty ENV is selected. Nothing to do!"
+                    else if( "${EXPORT_IMAGE_TAG}${NOTIFICATION_IMAGE_TAG}${DAS_IMAGE_TAG}${WARMUP_IMAGE_TAG}${STABLING_IMAGE_TAG}${ENERGY_IMAGE_TAG}${RULE_IMAGE_TAG}${ALERTING_IMAGE_TAG}${TM_UPLOAD_IMAGE_TAG}${TM_IMAGE_TAG}${OBS_IF_IMAGE_TAG}${WEBAPP_IMAGE_TAG}" == '')
+                        echo "########## [WARNING] Empty IMAGE TAG is selected. Nothing to do!"
+                    else 
+                        forceStop = false
+                }
+            }
+        } 
+
+        stage('Perform backend_deployer pipeline') { 
+            when { 
+                expression { forceStop == false && (params.EXPORT_IMAGE_TAG != '' || params.NOTIFICATION_IMAGE_TAG != '' || params.DAS_IMAGE_TAG != '' || params.WARMUP_IMAGE_TAG != '' || params.STABLING_IMAGE_TAG != '' || params.ENERGY_IMAGE_TAG != '' || params.RULE_IMAGE_TAG != '' || params.ALERTING_IMAGE_TAG != '' || params.TM_UPLOAD_IMAGE_TAG != '' || params.TM_IMAGE_TAG != '')}
+            }  
+            steps { 
+                script {
+                    echo "########## [INFO] Deploy new BACKEND image on $ENV environment"
+
+                    build job: BACKEND_DEPLOYER_JOB, parameters: [
+                        string(name: 'EXPORT_IMAGE_TAG',        value: EXPORT_IMAGE_TAG), 
+                        string(name: 'NOTIFICATION_IMAGE_TAG',  value: NOTIFICATION_IMAGE_TAG), 
+                        string(name: 'DAS_IMAGE_TAG',           value: DAS_IMAGE_TAG), 
+                        string(name: 'WARMUP_IMAGE_TAG',        value: WARMUP_IMAGE_TAG), 
+                        string(name: 'STABLING_IMAGE_TAG',      value: STABLING_IMAGE_TAG), 
+                        string(name: 'ENERGY_IMAGE_TAG',        value: ENERGY_IMAGE_TAG), 
+                        string(name: 'RULE_IMAGE_TAG',          value: RULE_IMAGE_TAG), 
+                        string(name: 'ALERTING_IMAGE_TAG',      value: ALERTING_IMAGE_TAG), 
+                        string(name: 'TM_UPLOAD_IMAGE_TAG',     value: TM_UPLOAD_IMAGE_TAG), 
+                        string(name: 'TM_IMAGE_TAG',            value: TM_IMAGE_TAG), 
+                        booleanParam(name: 'AEMR',              value: AEMR), 
+                        booleanParam(name: 'WCP',               value: WCP), 
+                        string(name: 'ENV',                     value: ENV),
+                        string(name: 'DEBUG_MODE',              value: DEBUG_MODE),
+                        booleanParam(name: 'VALIDATE_IMAGE',    value: VALIDATE_IMAGE)
+                    ]
+                }
+                
+            } 
+        } 
+
+        stage('Perform obs_if_deployer pipeline') { 
+            when { 
+                expression { forceStop == false && params.OBS_IF_IMAGE_TAG != '' }
+            }  
+            steps { 
+                script {
+                    echo "########## [INFO] Deploy OBS-IF Service"
+
+                    build job: OBS_IF_DEPLOYER_JOB, parameters: [
+                        string(name: 'OBS_IF_IMAGE_TAG', value: OBS_IF_IMAGE_TAG), 
+                        booleanParam(name: 'ALL_TRAIN', value: ALL_TRAIN), 
+                        booleanParam(name: 'AEMR', value: AEMR), 
+                        booleanParam(name: 'WCP', value: WCP), 
+                        booleanParam(name: 'AEMR_810001', value: AEMR_810001), 
+                        booleanParam(name: 'AEMR_810002', value: AEMR_810002), 
+                        booleanParam(name: 'AEMR_810003', value: AEMR_810003), 
+                        booleanParam(name: 'AEMR_810004', value: AEMR_810004), 
+                        booleanParam(name: 'AEMR_810005', value: AEMR_810005), 
+                        booleanParam(name: 'AEMR_810006', value: AEMR_810006), 
+                        booleanParam(name: 'AEMR_810007', value: AEMR_810007), 
+                        booleanParam(name: 'AEMR_810008', value: AEMR_810008), 
+                        booleanParam(name: 'AEMR_810009', value: AEMR_810009), 
+                        booleanParam(name: 'AEMR_810010', value: AEMR_810010), 
+                        booleanParam(name: 'WCP_805001', value: WCP_805001), 
+                        booleanParam(name: 'WCP_805002', value: WCP_805002), 
+                        booleanParam(name: 'WCP_805003', value: WCP_805003), 
+                        booleanParam(name: 'WCP_805004', value: WCP_805004), 
+                        booleanParam(name: 'WCP_805005', value: WCP_805005), 
+                        booleanParam(name: 'WCP_805006', value: WCP_805006), 
+                        booleanParam(name: 'WCP_805007', value: WCP_805007), 
+                        booleanParam(name: 'WCP_805008', value: WCP_805008), 
+                        booleanParam(name: 'WCP_805009', value: WCP_805009), 
+                        booleanParam(name: 'WCP_805010', value: WCP_805010), 
+                        string(name: 'ENV', value: ENV),
+                        string(name: 'DEBUG_MODE',              value: DEBUG_MODE),
+                        booleanParam(name: 'VALIDATE_IMAGE',    value: VALIDATE_IMAGE)
+                    ]
+                }
+                
+            } 
+        } 
+
+        stage('Perform webapp_deployer pipeline') { 
+            when { 
+                expression { forceStop == false && params.WEBAPP_IMAGE_TAG != '' }
+            }  
+            steps { 
+                script {
+                    echo "########## [INFO] Deploy WEBAPP Service"
+
+                    build job: WEB_DEPLOYER_JOB, parameters: [
+                        string(name: 'WEBAPP_IMAGE_TAG', value: ''),
+                        string(name: 'ENV', value: ''),
+                        string(name: 'DEBUG_MODE',              value: DEBUG_MODE),
+                        booleanParam(name: 'VALIDATE_IMAGE',    value: VALIDATE_IMAGE)
+                    ]
+                }
+            } 
+        }  
+    }
+
+    post {
+        always {
+            script {
+
+                if(forceStop)
+                    currentBuild.result = 'SUCCESS'
+                else {
+                    String description = ''
+
+                    if(EXPORT_IMAGE_TAG != '')
+                        description = description + "ex: " + EXPORT_IMAGE_TAG + " - "
+
+                    if(NOTIFICATION_IMAGE_TAG != '')
+                        description = description + "no: " + NOTIFICATION_IMAGE_TAG + " - "
+
+                    if(DAS_IMAGE_TAG != '')
+                        description = description + "da: " + DAS_IMAGE_TAG + " - "
+
+                    if(WARMUP_IMAGE_TAG != '')
+                        description = description + "wa: " + WARMUP_IMAGE_TAG + " - "
+
+                    if(STABLING_IMAGE_TAG != '')
+                        description = description + "st: " + STABLING_IMAGE_TAG + " - "
+
+                    if(ENERGY_IMAGE_TAG != '')
+                        description = description + "en: " + ENERGY_IMAGE_TAG + " - "
+
+                    if(RULE_IMAGE_TAG != '')
+                        description = description + "ru: " + RULE_IMAGE_TAG + " - "
+
+                    if(ALERTING_IMAGE_TAG != '')
+                        description = description + "al: " + ALERTING_IMAGE_TAG + " - "
+
+                    if(TM_UPLOAD_IMAGE_TAG != '')
+                        description = description + "tmu: " + TM_UPLOAD_IMAGE_TAG + " - "
+
+                    if(TM_IMAGE_TAG != '')
+                        description = description + "tms: " + TM_IMAGE_TAG + " - "
+
+                    if(OBS_IF_IMAGE_TAG != '')
+                        description = description + "obs: " + OBS_IF_IMAGE_TAG + " - "
+
+                    if(WEBAPP_IMAGE_TAG != '')
+                        description = description + "web: " + WEBAPP_IMAGE_TAG + " - "
+
+                    description = description + "Deploy on: " + ENV
+
+                    currentBuild.description = description
+                }
+            }
+        }
+    }
+} 

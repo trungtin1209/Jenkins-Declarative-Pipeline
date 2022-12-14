@@ -1,0 +1,212 @@
+library identifier: 'hfmt-shared-library@jenkins-pipelines',
+    retriever: modernSCM([
+      $class: 'GitSCMSource',
+      credentialsId: '046283f7-9d1a-499e-b436-604173ef2c84', 
+      remote: 'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-devops.git'
+])
+
+def forceStop = true
+
+pipeline { 
+
+    tools {
+        nodejs 'hfmt_node'
+    }
+
+    parameters {
+        string(name: 'TAG_VERSION', defaultValue: '', trim: true , description: '<p style="font-family:Calibri (Body);color:Tomato;" > Input here the tag version of your name convention.')
+        choice(choices: ['clean install -U', 'clean package'], name: 'MAVEN_GOALS',description: '<p style="font-family:Calibri (Body);color:Tomato;" >select the maven compilation goals to execute, type in new one as needed<br/>')
+        choice(choices: ['', '-X'], name: 'MAVEN_DEBUG',description: '<p style="font-family:Calibri (Body);color:Tomato;" > Enable a debug mode if you want to use incase the build steps got any issue</p>')
+    }
+
+    environment { 
+        // Jenkins ID
+        GITLAB_CREDENTIAL_ID            =       "046283f7-9d1a-499e-b436-604173ef2c84"
+        DEV_ACR_CREDENTIAL_ID           =       "hfmt_acr_hfmtdev"
+        HARBOR_CREDENTIAL_ID            =       "hfmt_habor"
+        
+        // Pipeline variable
+        DEV                             =       "DEV"
+        QC                              =       "QC"
+        UAT                             =       "UAT"
+        LOCAL_UAT                       =       "local_UAT"
+
+        DEV_RG_NAME                     =       "dev-rg-hfmt"
+        QC_RG_NAME                      =       "qc-rg-hfmt"
+        UAT_RG_NAME                     =       "HRL-UKS-HFMT-INT-RG01"
+        LOCAL_UAT_RG_NAME               =       "qc-rg-hfmt"
+
+        DEV_AZ_SP_ACCOUNT               =       "hfmt_azure_sp_account"
+        QC_AZ_SP_ACCOUNT                =       "hfmt_azure_sp_account"
+        LOCAL_UAT_AZ_SP_ACCOUNT         =       "hfmt_azure_sp_account"
+        UAT_AZ_SP_ACCOUNT               =       "hfmt_uat_azure_sp_account"
+
+        DEV_AKS_NAME                    =       "dev-coreapp-aks"
+        QC_AKS_NAME                     =       "qc-coreapp-aks"
+        LOCAL_UAT_AKS_NAME              =       "uat-coreapp-aks"
+        UAT_WEBAPP_AKS_NAME             =       "HRL-UKS-HFMT-INT-AKS-webapp"
+        UAT_BE_AKS_NAME                 =       "HRL-UKS-HFMT-INT-AKS-backend"
+        UAT_OBSIF_AKS_NAME              =       "HRL-UKS-HFMT-INT-AKS-obs-if"
+
+        DEV_ACR_REGISTRY                =       "hfmtdev"
+        UAT_ACR_REGISTRY                =       "hfmtuat"
+
+        DEV_KEYVAULT                    =       "https://hfmt-dev-kv.vault.azure.net/"
+        QC_KEYVAULT                     =       "https://hfmt-qc-kv.vault.azure.net/"
+        UAT_KEYVAULT                    =       "https://hrl-uks-hfmt-int-kv-uat.vault.azure.net/"
+        LOCAL_UAT_KEYVAULT              =       "NOT DEPLOYED YET"
+
+        NAMESPACE_BACKEND               =       "backend-application"
+        NAMESPACE_WEBAPP                =       "web-application"
+        NAMESPACE_OBSIF                 =       "wayside-application"
+        
+        DEV_BRANCH                      =       "*/develop"
+        QC_BRANCH                       =       "*/develop"
+        UAT_BRANCH                      =       "refs/tags/R3.0.0"
+        LOCAL_UAT_BRANCH                =       "refs/tags/R3.0.0"
+
+        WEBAPP_IMAGE_NAME               =       "hfmt/web-app"
+        OBS_IF_IMAGE_NAME               =       "hfmt/hfmt-obs-if-services"
+        EXPORT_IMAGE_NAME               =       "hfmt/backend/export-service"
+        NOTIFICATION_IMAGE_NAME         =       "hfmt/backend/notification-service"
+        DAS_IMAGE_NAME                  =       "hfmt/backend/das-service"
+        WARMUP_IMAGE_NAME               =       "hfmt/backend/warmup-service"
+        STABLING_IMAGE_NAME             =       "hfmt/backend/stabling-service"
+        ENERGY_IMAGE_NAME               =       "hfmt/backend/ec-service"
+        RULE_IMAGE_NAME                 =       "hfmt/backend/rule-service"
+        ALERTING_IMAGE_NAME             =       "hfmt/backend/alerting-service"
+        TM_UPLOAD_IMAGE_NAME            =       "hfmt/backend/tm-upload-service"
+        TM_IMAGE_NAME                   =       "hfmt/backend/tm-service"
+        OBS_SIM_IMAGE_NAME              =       "hfmt-obs-simulator"
+
+        HARBOR_URL                      =       "fatadev.cybersoft.vn:8433"
+
+        GITLAB_HFMT_DEVOPS              =       'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-devops.git'
+        GITLAB_HFMT_DEVOPS_INFRA        =       'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-devops-infra.git'
+        GITLAB_HFMT_OBS_IF              =       'https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-obs-if-services.git'
+        GITLAB_HFMT_BACKEND             =       "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-backend.git"  
+        GITLAB_HFMT_WEB_SERVER          =       "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-web-server.git"  
+        GITLAB_HFMT_WEB_UI              =       "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-web-ui.git"  
+        GITLAB_HFMT_POM_PARENT          =       "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-pom-parent.git"  
+        GITLAB_HFMT_DATA_SERVICE        =       "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-data-service.git"  
+        GITLAB_HFMT_DATA_PROCESSING     =       "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-data-processing.git"  
+        GITLAB_HFMT_OBS_SIM             =       "https://git.hv-vn.com/rail-transportation/hfmt-wcp/hfmt-obs-simulator.git"        
+        HVN_AZURE_DEVOPS                =       "git@ssh.dev.azure.com:v3/HFMT/Phoenix/hfmt-devops"
+        HRL_AZURE_DEVOPS                 =   "git@ssh.dev.azure.com:v3/HRL-HFMT-Devops/HFMT-TestingWP1/HFMT-WP1Testv1.0"
+
+        DEVOPS_DIR                      =       "hfmt-devops"
+        DEVOPS_INFRA_DIR                =       "hfmt-devops-infra"
+        OBS_IF_DIR                      =       "hfmt-obs-if-services"
+        BACKEND_DIR                     =       "hfmt-backend"
+        WEB_SERVER_DIR                  =       "hfmt-web-server"
+        WEB_UI_DIR                      =       "hfmt-web-ui"
+        POM_PARENT_DIR                  =       "hfmt-pom-parent"
+        DATA_SERVICE_DIR                =       "hfmt-data-service"
+        DATA_PROCESSING_DIR             =       "hfmt-data-processing"
+        STREAMING_PROCESSING_DIR        =       "streaming-processing"
+        OBS_SIM_DIR                     =       "hfmt-obs-simulator"
+
+        OBS_IF_ASSEMBLER_JOB            =       "hfmt_obs_if_assembler"
+        OBS_IF_DEPLOYER_JOB             =       "hfmt_obs_if_deployer"
+        BACKEND_ASSEMBLER_JOB           =       "hfmt_backend_assembler"
+        BACKEND_DEPLOYER_JOB            =       "hfmt_backend_deployer"
+        WEB_ASSEMBLER_JOB               =       "hfmt_web_assembler"
+        WEB_DEPLOYER_JOB                =       "hfmt_web_deployer"
+        DATA_PROCESSING_ASSEMBLER_JOB   =       "hfmt_data_processing_assembler"
+        DATA_PROCESSING_DEPLOYER_JOB    =       "hfmt_data_processing_deployer"
+
+        DEV_DATA_PROCESSING_NODE        =       "hfmt_datapro_dev_cloud"    
+        QC_DATA_PROCESSING_NODE         =       "hfmt_datapro_qc_cloud"    
+        UAT_DATA_PROCESSING_NODE        =       "hfmt_datapro_uat_cloud"    
+        LOCAL_UAT_DATA_PROCESSING_NODE  =       "NOT DEPLOY YET"    
+
+        DEV_SPARK_MASTER                =       "spark://spark.uksouth.cloudapp.azure.com:7077"
+        QC_SPARK_MASTER                 =       "spark://qc-spark-hd.azurehdinsight.net:7077"
+        UAT_SPARK_MASTER                =       "spark://plafcb-hrl-uks-hfmt-int-hdin-spark.azurehdinsight.net:7077"
+        LOCAL_UAT_SPARK_MASTER          =       "NOT DEPLOY YET"
+
+
+
+
+        MVN_CMD                          =   "/usr/bin/mvn"
+        JAVA_HOME                        =   "/usr/lib/jvm/java-11-openjdk-11.0.15.0.10-2.el8_6.x86_64/"
+    } 
+
+    agent {
+        label {
+            label "hfmt_builder"
+        }
+    }
+
+    stages { 
+
+        stage('Prepare workspace') { 
+            steps{
+                script {
+
+                    echo "########## [INFO] Check environment and clean work space"
+
+                    sh "rm -rf *"
+
+                    if( "${TAG_VERSION}" == '')
+                        echo "########## [WARNING] TAG_VERSION is null. Nothing to do!"
+                    else 
+                        forceStop = false
+                }
+            }
+        } 
+
+        stage('Checkout source code') { 
+            when {
+                expression { forceStop == false }
+            }
+            steps { 
+                script {
+
+                    echo "########## [INFO] Checkout $POM_PARENT_DIR repo"
+                    checkout([
+                        $class: 'GitSCM', 
+                        branches: [[name: "$TAG_VERSION"]], 
+                        extensions: [[
+                            $class: 'CleanBeforeCheckout', 
+                            deleteUntrackedNestedRepositories: true], 
+                            [
+                                $class: 'RelativeTargetDirectory', 
+                                relativeTargetDir: "$POM_PARENT_DIR"]], 
+                        userRemoteConfigs: [[
+                            credentialsId: "$GITLAB_CREDENTIAL_ID", 
+                            url: "$GITLAB_HFMT_POM_PARENT"]]])    
+                }
+            } 
+        } 
+
+        stage('Build source code') { 
+            when {
+                expression { forceStop == false }
+            }
+            steps { 
+                script {
+
+                    pom_parent.build()
+                }
+            } 
+        }  
+    }
+
+    post {
+        always {
+            script {
+
+                if(forceStop)
+                    currentBuild.result = 'SUCCESS'
+                else {
+                    String description = ''
+
+                    description = description + "Tag: " + TAG_VERSION
+
+                    currentBuild.description = description
+                }
+            }
+        }
+    }
+} 
